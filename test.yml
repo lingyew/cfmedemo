@@ -1,0 +1,35 @@
+---
+- name: test scripts
+  hosts: all
+  gather_facts: false
+  vars:
+    provision_demo: true
+
+  tasks:
+    - name: bundle exec tools
+      shell: bundle exec tools/fix_auth.rb --v2 --invalid bogus 
+      args:
+        chdir: /var/www/miq/vmdb
+      when: provision_demo == true
+
+# Drop the Existing DB
+    - name: rails updates
+      shell: bin/rails r "User.find_by_userid('admin').update_attributes(:password => 'smartvm')"
+      args:
+        chdir: /var/www/miq/vmdb
+      when: provision_demo == true
+
+    - name: Enable evmserverd
+      service:
+        name: evmserverd
+        enabled: yes
+
+# Example action to stop service httpd, if running
+    - name: Start evmserverd 
+      service:
+        name: evmserverd
+        state: started
+      when: provision_demo == true
+
+    - name: Pause for evmserverd to start
+      pause: prompt="Please wait..." minutes=1

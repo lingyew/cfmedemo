@@ -1,0 +1,132 @@
+#site.yml Ansible Playbook
+#cat inventory.txt
+#[CFME]
+
+#192.168.X.Y
+
+#ansible-playbook -i inventory.txt -vvvv
+
+#ansible-playbook -i inventory.txt -e provision_demo=false
+
+#Use an inventory file with the IP/hostname of your [CFME] instance(s)
+
+---
+
+- name: Configure CloudForms
+  hosts: CFME
+  gather_facts: false
+  vars:
+    rhn_poolid: "8a85f9815ca2f1c2015ca324ec522595"
+    rhn_userid: "userid"
+    rhn_passid: "password"
+    provision_demo: true
+  
+  tasks:
+    - name: "Register RHEL via subscription-manager"
+      redhat_subscription:
+        state: present
+        username: "{{rhn_userid}}"
+        password: "{{rhn_passid}}"
+        autosubscribe: yes
+        pool_ids: "{{rhn_poolid}}"
+
+#    - name: Subscribe RHEL to poolid via subscription-manager
+#      shell: subscription-manager attach --pool="{{rhn_poolid}}"
+#      ignore_errors: yes
+
+    - name: Enable rhel-7-server-extras-rpms via subscription-manager
+      command: subscription-manager repos --enable rhel-7-server-extras-rpms
+      ignore_errors: yes
+
+#- name: Yum Update All
+# yum: name=* state=latest
+
+#- name: Yum Install Git
+# yum: name=git state=latest
+
+#- name: Yum Install Tree
+# yum: name=tree state=latest
+
+#- name: Yum Install Wget
+# yum: name=wget state=latest
+
+#- name: Yum Install VIM
+# yum: name=vim state=latest
+
+    - name: Disable evmserverd
+      service:
+        name: evmserverd
+        enabled: no
+
+    - name: Stop evmserverd
+      service:
+        name: evmserverd
+        state: stopped
+      when: provision_demo == true
+
+    - name: Pause for evmserverd to stop
+      pause: prompt="Please wait..." minutes=1
+
+#- name: Download Dump for Demo
+# get_url:
+# url: http://10.9.62.89/dumps/42/vmdb_production_latest.dump
+# dest: /root/vmdb_production_latest.dump
+# mode: 0440
+# timeout: 120
+    - name: Copy Dump to /var
+      copy:
+        src: vmdb_production_latest.dump
+        dest: /var/vmdb_production_latest.dump
+        mode: 0777
+
+# Drop the Existing DB
+    - name: Drop Existing vmdb_production
+      shell: dropdb vmdb_production
+      args:
+        chdir: /root
+      ignore_errors: yes
+      when: provision_demo == true
+
+# Drop the Existing DB
+    - name: Create Blank vmdb_production
+      shell: createdb vmdb_production
+        args:
+        chdir: /root
+      when: provision_demo == true
+
+# Drop the Existing DB
+    - name: Restore the Dump
+      shell: pg_restore -vd vmdb_production /var/vmdb_production_latest.dump 
+      args:
+        chdir: /root
+      when: provision_demo == true
+
+# Drop the Existing DB
+    - name: bundle exec tools
+      shell: bundle exec tools/fix_auth.rb --v2 --invalid bogus 
+      args:
+        chdir: /var/www/miq/vmdb
+      when: provision_demo == true
+
+# Drop the Existing DB
+    - name: rails updates
+      shell: bin/rails r "User.find_by_userid('admin').update_attributes(:password => 'smartvm')"
+      args:
+        chdir: /var/www/miq/vmdb
+      when: provision_demo == true
+
+    - name: Enable evmserverd
+      service:
+        name: evmserverd
+        enabled: yes
+
+# Example action to stop service httpd, if running
+    - name: Start evmserverd 
+      service:
+        name: evmserverd
+        state: started
+      when: provision_demo == true
+
+    - name: Pause for evmserverd to start
+      pause: prompt="Please wait..." minutes=1
+
